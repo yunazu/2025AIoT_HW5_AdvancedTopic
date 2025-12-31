@@ -5,91 +5,89 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 import io
 
-# --- 頁面設定 ---
-st.set_page_config(page_title="AI PPT Stylist", page_icon="📊")
-st.title("🎨 AI 簡報風格設計器")
-st.write("輸入主題，一鍵生成兩種不同風格的 PPT 範本！")
+st.set_page_config(page_title="PPT AI Redesigner", page_icon="🎨")
+st.title("🔄 PPT 智能換版型工具")
+st.write("上傳一份原始 PPT，由 AI 自動轉換為兩種不同設計風格。")
 
-# --- 核心功能：生成 PPT ---
-def create_ppt(theme_name, style="business"):
-    prs = Presentation()
+# --- 核心功能：讀取原始 PPT 內容 ---
+def extract_text_from_ppt(uploaded_file):
+    prs = Presentation(uploaded_file)
+    content_list = []
+    for slide in prs.slides:
+        slide_data = {"title": "", "text": ""}
+        if slide.shapes.title:
+            slide_data["title"] = slide.shapes.title.text
+        
+        # 抓取非標題的文字方塊內容
+        other_texts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame and shape != slide.shapes.title:
+                other_texts.append(shape.text)
+        slide_data["text"] = "\n".join(other_texts)
+        content_list.append(slide_data)
+    return content_list
+
+# --- 核心功能：生成新風格 PPT ---
+def redesign_ppt(original_content, style="business"):
+    new_prs = Presentation()
     
-    # 定義風格參數
-    if style == "business":
-        bg_color = RGBColor(255, 255, 255) # 白色背景
-        title_color = RGBColor(0, 51, 102) # 深藍色標題
-        align = PP_ALIGN.LEFT
-        font_name = "Arial"
-    else:
-        bg_color = RGBColor(43, 43, 43)    # 深灰色背景
-        title_color = RGBColor(255, 102, 0) # 亮橘色標題
-        align = PP_ALIGN.CENTER
-        font_name = "Verdana"
+    # 設定風格參數
+    bg_color = RGBColor(255, 255, 255) if style == "business" else RGBColor(30, 30, 30)
+    title_color = RGBColor(0, 80, 150) if style == "business" else RGBColor(0, 255, 200)
+    text_color = RGBColor(50, 50, 50) if style == "business" else RGBColor(220, 220, 220)
+    alignment = PP_ALIGN.LEFT if style == "business" else PP_ALIGN.CENTER
 
-    # 建立三頁投影片
-    slides_content = [
-        ["標題頁", f"關於 {theme_name} 的分析報告", "報告人：AI 助手"],
-        ["重點摘要", "核心技術探討", "1. 自動化流程\n2. AI 視覺設計\n3. 使用者體驗優化"],
-        ["結論", "未來展望", "持續進化，創造更多 AI 應用的可能性。"]
-    ]
-
-    for slide_data in slides_content:
-        slide_layout = prs.slide_layouts[1] # 使用標題+內容版面
-        slide = prs.slides.add_slide(slide_layout)
+    for data in original_content:
+        slide_layout = new_prs.slide_layouts[1] # 標題+內容
+        slide = new_prs.slides.add_slide(slide_layout)
         
-        # 設定背景顏色 (僅示範，進階可加圖案)
-        background = slide.background
-        fill = background.fill
-        fill.solid()
-        fill.fore_color.rgb = bg_color
+        # 1. 背景設定
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = bg_color
 
-        # 設定標題風格
-        title = slide.shapes.title
-        title.text = slide_data[1]
-        title_text_frame = title.text_frame.paragraphs[0]
-        title_text_frame.font.bold = True
-        title_text_frame.font.size = Pt(36)
-        title_text_frame.font.color.rgb = title_color
-        title_text_frame.alignment = align
-        
-        # 設定內容風格
-        content = slide.placeholders[1]
-        content.text = slide_data[2]
-        for para in content.text_frame.paragraphs:
-            para.font.size = Pt(18)
-            if style == "modern":
-                para.font.color.rgb = RGBColor(200, 200, 200) # 淺灰文字
+        # 2. 標題重新設計
+        if slide.shapes.title:
+            title_shape = slide.shapes.title
+            title_shape.text = data["title"]
+            para = title_shape.text_frame.paragraphs[0]
+            para.font.bold = True
+            para.font.color.rgb = title_color
+            para.alignment = alignment
 
-    # 將 PPT 存入記憶體體中回傳
-    binary_output = io.BytesIO()
-    prs.save(binary_output)
-    binary_output.seek(0)
-    return binary_output
+        # 3. 內文重新設計
+        content_shape = slide.placeholders[1]
+        content_shape.text = data["text"]
+        for p in content_shape.text_frame.paragraphs:
+            p.font.size = Pt(18)
+            p.font.color.rgb = text_color
+            p.alignment = alignment
+
+    output = io.BytesIO()
+    new_prs.save(output)
+    output.seek(0)
+    return output
 
 # --- UI 介面 ---
-topic = st.text_input("請輸入簡報主題：", placeholder="例如：2025 AI 發展趨勢")
+uploaded_file = st.file_uploader("請上傳原始 PPT 檔案 (.pptx)", type=["pptx"])
 
-if topic:
+if uploaded_file:
+    # 1. 執行提取
+    with st.spinner("正在解析原始投影片內容..."):
+        extracted_data = extract_text_from_ppt(uploaded_file)
+    
+    st.success(f"成功讀取 {len(extracted_data)} 頁投影片！")
+
+    # 2. 提供風格選項
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("風格 A：專業商務藍")
-        st.info("特點：白色背景、深藍標題、靠左對齊。適合正式會議。")
-        ppt_a = create_ppt(topic, style="business")
-        st.download_button(
-            label="下載商務風格 PPT",
-            data=ppt_a,
-            file_name=f"{topic}_business.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        )
+        st.subheader("風格 A：專業商務 (Blue)")
+        st.caption("特點：左對齊、商務藍、高對比白背景")
+        ppt_a = redesign_ppt(extracted_data, style="business")
+        st.download_button("下載商務版型", ppt_a, "business_redesign.pptx")
 
     with col2:
-        st.subheader("風格 B：極簡現代黑")
-        st.warning("特點：深色背景、亮橘標題、置中對齊。適合技術分享。")
-        ppt_b = create_ppt(topic, style="modern")
-        st.download_button(
-            label="下載現代風格 PPT",
-            data=ppt_b,
-            file_name=f"{topic}_modern.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        )
+        st.subheader("風格 B：未來科技 (Cyber)")
+        st.caption("特點：置中對齊、螢光綠標題、深色背景")
+        ppt_b = redesign_ppt(extracted_data, style="cyber")
+        st.download_button("下載科技版型", ppt_b, "cyber_redesign.pptx")
