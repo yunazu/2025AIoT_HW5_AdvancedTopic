@@ -1,4 +1,4 @@
-# 📂 AI PPT Architect Pro — 智能簡報重構師
+# 📂 AI PPT Architect Pro — 智慧簡報重構師
 
 本專案為 **HW5 — Advanced Topic (Q3)** 的實作成果。這是一個結合 **Gemini AI** 語義理解與 **Python 自動化技術** 的簡報工具，旨在解決傳統 PPT 換版型時「美感不足」與「內容冗餘」的痛點。
 
@@ -14,7 +14,7 @@
 ### 1. 環境準備
 請確保你的電腦已安裝 Python 3.9+，並安裝必要套件：
 ```bash
-pip install streamlit python-pptx google-generativeai
+pip install streamlit python-pptx google-genai
 ```
 ### 2. 取得 Gemini API Key
 前往 Google AI Studio 免費申請 API Key。
@@ -30,7 +30,7 @@ streamlit run app.py
 
 2. 上傳來源：上傳一份你想「改寫」的原始 PPT 檔案。
 
-3. 上傳外觀：上傳一份「空的」專業 PPT 模板檔案（建議包含精美母片設計）。
+3. 上傳外觀：上傳一份「空的」專業 PPT 模板檔案（建議包含精美母片設計）。可參考 tplt 內容，僅支援模板內容為「標題 + 內文」格式
 
 4. 開始轉換：點擊「🚀 開始 AI 重構」，等待 AI 處理完成後，下載重塑後的 PPT。
 
