@@ -1,64 +1,72 @@
 import streamlit as st
 from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.util import Pt
 import io
 
-st.set_page_config(page_title="PPT Style Transfer", page_icon="🎨")
-st.title("🪄 PPT 模板風格轉換器")
-st.write("上傳原始簡報與目標模板，AI 將自動完成內容移植。")
+st.set_page_config(page_title="PPT AI Style Transformer", page_icon="🪄")
+st.title("🪄 PPT 視覺風格強行轉換器")
 
-def transfer_style(source_ppt, template_ppt):
-    source = Presentation(source_ppt)
-    template = Presentation(template_ppt)
-    
-    # 建立一個新的簡報，起始於模板的母片架構
-    # 這裡我們直接在 template 後面新增投影片，避免遺失模板的背景
-    
-    for slide in source.slides:
-        # 從模板中選擇一個版型 (通常索引 1 是「標題+內容」)
-        try:
-            layout = template.slide_layouts[1] 
-        except:
-            layout = template.slide_layouts[0]
-            
-        new_slide = template.slides.add_slide(layout)
+# --- 風格定義字典 ---
+STYLES = {
+    "科技深邃藍": {
+        "bg_color": RGBColor(10, 20, 50),
+        "title_color": RGBColor(0, 255, 255), # 螢光青
+        "text_color": RGBColor(200, 230, 255),
+        "font_name": "Arial"
+    },
+    "極簡商務白": {
+        "bg_color": RGBColor(255, 255, 255),
+        "title_color": RGBColor(0, 51, 102),  # 深藍
+        "text_color": RGBColor(60, 60, 60),
+        "font_name": "Microsoft JhengHei"
+    },
+    "時尚活力橘": {
+        "bg_color": RGBColor(40, 40, 40),
+        "title_color": RGBColor(255, 102, 0), # 亮橘
+        "text_color": RGBColor(240, 240, 240),
+        "font_name": "Verdana"
+    }
+}
+
+def transform_ppt(uploaded_file, selected_style):
+    prs = Presentation(uploaded_file)
+    style_config = STYLES[selected_style]
+
+    for slide in prs.slides:
+        # 1. 強制設定背景顏色
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = style_config["bg_color"]
         
-        # 1. 移植標題
-        if slide.shapes.title and new_slide.shapes.title:
-            new_slide.shapes.title.text = slide.shapes.title.text
+        # 2. 遍歷所有形狀 (包含圖片以外的所有物件)
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
             
-        # 2. 移植主要內容文字
-        source_placeholders = [sp for sp in slide.placeholders if sp != slide.shapes.title]
-        target_placeholders = [tp for tp in new_slide.placeholders if tp != new_slide.shapes.title]
-        
-        if source_placeholders and target_placeholders:
-            # 簡單的一對一移植
-            target_placeholders[0].text = source_placeholders[0].text
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    # 強制修改字體與顏色
+                    run.font.color.rgb = style_config["title_color"] if shape == slide.shapes.title else style_config["text_color"]
+                    run.font.name = style_config["font_name"]
+                    run.font.bold = True if shape == slide.shapes.title else False
 
     output = io.BytesIO()
-    template.save(output)
+    prs.save(output)
     output.seek(0)
     return output
 
 # --- UI 介面 ---
-col1, col2 = st.columns(2)
+src_file = st.file_uploader("1. 上傳原始 PPT", type=["pptx"])
+style_choice = st.selectbox("2. 選擇 AI 重新設計的風格", list(STYLES.keys()))
 
-with col1:
-    src_file = st.file_uploader("1. 上傳【原始檔案】(內容來源)", type=["pptx"])
-with col2:
-    tpl_file = st.file_uploader("2. 上傳【空的模板】(風格來源)", type=["pptx"])
-
-if src_file and tpl_file:
-    if st.button("開始轉換風格"):
-        with st.spinner("正在將內容移植至新模板..."):
-            result_ppt = transfer_style(src_file, tpl_file)
-            
-            st.success("轉換完成！")
+if src_file:
+    if st.button("立即套用 AI 風格並更換版型"):
+        with st.spinner("正在重新計算版型配色..."):
+            result_ppt = transform_ppt(src_file, style_choice)
+            st.success(f"成功將簡報轉換為【{style_choice}】風格！")
             st.download_button(
-                label="📥 下載轉換後的簡報",
+                label="📥 下載新版簡報",
                 data=result_ppt,
-                file_name="styled_presentation.pptx",
+                file_name=f"redesigned_{style_choice}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
             )
-
-st.divider()
-st.info("💡 提示：模板檔案建議包含您想要的背景、Logo 與字體設定。本工具會將原始文字填入模板的『標題與內容』框中。")
