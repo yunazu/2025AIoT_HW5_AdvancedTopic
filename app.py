@@ -2,7 +2,7 @@ import streamlit as st
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-import google.generativeai as genai
+from google import genai
 import io
 import json
 
@@ -17,8 +17,7 @@ with st.sidebar:
 
 # --- 核心邏輯：AI 內容重寫 ---
 def rewrite_content_with_ai(original_text, api_key):
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-pro')
+    client = genai.Client(api_key=api_key)
     
     prompt = f"""
     你是一個專業的簡報設計師。以下是從一份舊簡報中提取的原始內容：
@@ -40,7 +39,10 @@ def rewrite_content_with_ai(original_text, api_key):
       ]
     }}
     """
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+                model='gemini-2.5-flash-lite', # Flash 是免費版最穩定的
+                contents=prompt
+            )
     return json.loads(response.text)
 
 # --- 核心邏輯：從零生成全新 PPT ---
