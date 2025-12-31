@@ -19,23 +19,25 @@ with st.sidebar:
 def rewrite_content_with_ai(original_text, api_key):
     client = genai.Client(api_key=api_key)
     
+    # 優化後的 Prompt，增加強制性指令
     prompt = f"""
-    你是一個專業的簡報設計師。以下是從一份舊簡報中提取的原始內容：
-    ---
-    {original_text}
-    ---
-    請幫我執行以下任務：
-    1. 重新梳理內容，精簡為 3 頁最具代表性的投影片。
-    2. 每頁內容包含：標題 (Title)、內文重點 (Bullet Points, 3條)。
-    3. 為整份簡報選擇一個專業配色，並提供一個主題色的 RGB 數值 (例如: [0, 51, 102])。
+    你是一個專業的簡報設計師。請根據以下原始內容重新設計 3 頁簡報大綱。
     
-    請嚴格按照以下 JSON 格式回傳，不要有額外文字：
+    原始內容：
+    {original_text[:4000]}  # 限制長度避免超出 Token
+    
+    任務：
+    1. 重新梳理內容，精簡為 3 頁。
+    2. 提供一個主題色 RGB 數值。
+    3. 嚴格遵守以下 JSON 格式回傳，禁止包含任何 Markdown 標籤（如 ```json）或額外文字說明。
+    
+    JSON 範例格式：
     {{
       "theme_rgb": [0, 51, 102],
       "slides": [
-        {{"title": "標題1", "content": ["重點1", "重點2", "重點3"]}},
-        {{"title": "標題2", "content": ["重點1", "重點2", "重點3"]}},
-        {{"title": "標題3", "content": ["重點1", "重點2", "重點3"]}}
+        {{"title": "標題1", "content": ["重點1", "重點2"]}},
+        {{"title": "標題2", "content": ["重點1", "重點2"]}},
+        {{"title": "標題3", "content": ["重點1", "重點2"]}}
       ]
     }}
     """
