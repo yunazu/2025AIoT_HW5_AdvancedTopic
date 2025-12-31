@@ -1,72 +1,109 @@
 import streamlit as st
 from pptx import Presentation
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.util import Pt
+import google.generativeai as genai
 import io
+import json
 
-st.set_page_config(page_title="PPT AI Style Transformer", page_icon="🪄")
-st.title("🪄 PPT 視覺風格強行轉換器")
+# --- 介面設定 ---
+st.set_page_config(page_title="AI PPT Architect", layout="wide")
+st.title("🧠 AI 簡報重構師 (NotebookLM 風格)")
 
-# --- 風格定義字典 ---
-STYLES = {
-    "科技深邃藍": {
-        "bg_color": RGBColor(10, 20, 50),
-        "title_color": RGBColor(0, 255, 255), # 螢光青
-        "text_color": RGBColor(200, 230, 255),
-        "font_name": "Arial"
-    },
-    "極簡商務白": {
-        "bg_color": RGBColor(255, 255, 255),
-        "title_color": RGBColor(0, 51, 102),  # 深藍
-        "text_color": RGBColor(60, 60, 60),
-        "font_name": "Microsoft JhengHei"
-    },
-    "時尚活力橘": {
-        "bg_color": RGBColor(40, 40, 40),
-        "title_color": RGBColor(255, 102, 0), # 亮橘
-        "text_color": RGBColor(240, 240, 240),
-        "font_name": "Verdana"
-    }
-}
+# --- 側邊欄設定 ---
+with st.sidebar:
+    api_key = st.text_input("請輸入 Gemini API Key", type="password")
+    st.info("本工具會提取原始 PPT 內容，由 AI 重新編排大綱並套用新設計。")
 
-def transform_ppt(uploaded_file, selected_style):
-    prs = Presentation(uploaded_file)
-    style_config = STYLES[selected_style]
+# --- 核心邏輯：AI 內容重寫 ---
+def rewrite_content_with_ai(original_text, api_key):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-pro')
+    
+    prompt = f"""
+    你是一個專業的簡報設計師。以下是從一份舊簡報中提取的原始內容：
+    ---
+    {original_text}
+    ---
+    請幫我執行以下任務：
+    1. 重新梳理內容，精簡為 3 頁最具代表性的投影片。
+    2. 每頁內容包含：標題 (Title)、內文重點 (Bullet Points, 3條)。
+    3. 為整份簡報選擇一個專業配色，並提供一個主題色的 RGB 數值 (例如: [0, 51, 102])。
+    
+    請嚴格按照以下 JSON 格式回傳，不要有額外文字：
+    {{
+      "theme_rgb": [0, 51, 102],
+      "slides": [
+        {{"title": "標題1", "content": ["重點1", "重點2", "重點3"]}},
+        {{"title": "標題2", "content": ["重點1", "重點2", "重點3"]}},
+        {{"title": "標題3", "content": ["重點1", "重點2", "重點3"]}}
+      ]
+    }}
+    """
+    response = model.generate_content(prompt)
+    return json.loads(response.text)
 
-    for slide in prs.slides:
-        # 1. 強制設定背景顏色
-        slide.background.fill.solid()
-        slide.background.fill.fore_color.rgb = style_config["bg_color"]
+# --- 核心邏輯：從零生成全新 PPT ---
+def create_new_ppt(ai_data):
+    prs = Presentation()
+    theme_rgb = RGBColor(*ai_data["theme_rgb"])
+
+    for slide_data in ai_data["slides"]:
+        # 使用標題+內容版面
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
         
-        # 2. 遍歷所有形狀 (包含圖片以外的所有物件)
-        for shape in slide.shapes:
-            if not shape.has_text_frame:
-                continue
-            
-            for paragraph in shape.text_frame.paragraphs:
-                for run in paragraph.runs:
-                    # 強制修改字體與顏色
-                    run.font.color.rgb = style_config["title_color"] if shape == slide.shapes.title else style_config["text_color"]
-                    run.font.name = style_config["font_name"]
-                    run.font.bold = True if shape == slide.shapes.title else False
+        # 設定標題
+        title = slide.shapes.title
+        title.text = slide_data["title"]
+        title.text_frame.paragraphs[0].font.color.rgb = theme_rgb
+        title.text_frame.paragraphs[0].font.bold = True
 
+        # 設定內容
+        content_box = slide.placeholders[1]
+        content_box.text = "\n".join(slide_data["content"])
+        
     output = io.BytesIO()
     prs.save(output)
     output.seek(0)
     return output
 
-# --- UI 介面 ---
-src_file = st.file_uploader("1. 上傳原始 PPT", type=["pptx"])
-style_choice = st.selectbox("2. 選擇 AI 重新設計的風格", list(STYLES.keys()))
+# --- UI 流程 ---
+uploaded_file = st.file_uploader("1. 上傳原始 PPT", type=["pptx"])
 
-if src_file:
-    if st.button("立即套用 AI 風格並更換版型"):
-        with st.spinner("正在重新計算版型配色..."):
-            result_ppt = transform_ppt(src_file, style_choice)
-            st.success(f"成功將簡報轉換為【{style_choice}】風格！")
-            st.download_button(
-                label="📥 下載新版簡報",
-                data=result_ppt,
-                file_name=f"redesigned_{style_choice}.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            )
+if uploaded_file and api_key:
+    if st.button("🚀 開始 AI 重構並更換版型"):
+        with st.spinner("AI 正在深度閱讀並重新設計中..."):
+            # 1. 提取文字
+            old_prs = Presentation(uploaded_file)
+            full_text = ""
+            for slide in old_prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        full_text += shape.text + "\n"
+
+            # 2. AI 重新創作
+            try:
+                ai_result = rewrite_content_with_ai(full_text, api_key)
+                
+                # 3. 生成新檔案
+                new_ppt = create_new_ppt(ai_result)
+                
+                st.success("✅ 重構完成！AI 已根據內容重新設計了版型與文案。")
+                
+                # 預覽 AI 的建議
+                st.subheader("AI 設計大綱預覽")
+                for i, s in enumerate(ai_result["slides"]):
+                    st.write(f"**Slide {i+1}: {s['title']}**")
+
+                st.download_button(
+                    label="📥 下載 AI 設計的新簡報",
+                    data=new_ppt,
+                    file_name="AI_Redesigned_PPT.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )
+            except Exception as e:
+                st.error(f"AI 處理過程中發生錯誤: {e}")
+                st.info("請檢查 API Key 是否正確，或原始 PPT 文字是否過多。")
+elif not api_key:
+    st.warning("👈 請在左側輸入 Gemini API Key 以啟動 AI 功能。")
