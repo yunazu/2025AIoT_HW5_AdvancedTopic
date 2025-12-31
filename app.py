@@ -1,93 +1,64 @@
 import streamlit as st
 from pptx import Presentation
-from pptx.util import Inches, Pt
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
 import io
 
-st.set_page_config(page_title="PPT AI Redesigner", page_icon="🎨")
-st.title("🔄 PPT 智能換版型工具")
-st.write("上傳一份原始 PPT，由 AI 自動轉換為兩種不同設計風格。")
+st.set_page_config(page_title="PPT Style Transfer", page_icon="🎨")
+st.title("🪄 PPT 模板風格轉換器")
+st.write("上傳原始簡報與目標模板，AI 將自動完成內容移植。")
 
-# --- 核心功能：讀取原始 PPT 內容 ---
-def extract_text_from_ppt(uploaded_file):
-    prs = Presentation(uploaded_file)
-    content_list = []
-    for slide in prs.slides:
-        slide_data = {"title": "", "text": ""}
-        if slide.shapes.title:
-            slide_data["title"] = slide.shapes.title.text
-        
-        # 抓取非標題的文字方塊內容
-        other_texts = []
-        for shape in slide.shapes:
-            if shape.has_text_frame and shape != slide.shapes.title:
-                other_texts.append(shape.text)
-        slide_data["text"] = "\n".join(other_texts)
-        content_list.append(slide_data)
-    return content_list
-
-# --- 核心功能：生成新風格 PPT ---
-def redesign_ppt(original_content, style="business"):
-    new_prs = Presentation()
+def transfer_style(source_ppt, template_ppt):
+    source = Presentation(source_ppt)
+    template = Presentation(template_ppt)
     
-    # 設定風格參數
-    bg_color = RGBColor(255, 255, 255) if style == "business" else RGBColor(30, 30, 30)
-    title_color = RGBColor(0, 80, 150) if style == "business" else RGBColor(0, 255, 200)
-    text_color = RGBColor(50, 50, 50) if style == "business" else RGBColor(220, 220, 220)
-    alignment = PP_ALIGN.LEFT if style == "business" else PP_ALIGN.CENTER
-
-    for data in original_content:
-        slide_layout = new_prs.slide_layouts[1] # 標題+內容
-        slide = new_prs.slides.add_slide(slide_layout)
+    # 建立一個新的簡報，起始於模板的母片架構
+    # 這裡我們直接在 template 後面新增投影片，避免遺失模板的背景
+    
+    for slide in source.slides:
+        # 從模板中選擇一個版型 (通常索引 1 是「標題+內容」)
+        try:
+            layout = template.slide_layouts[1] 
+        except:
+            layout = template.slide_layouts[0]
+            
+        new_slide = template.slides.add_slide(layout)
         
-        # 1. 背景設定
-        slide.background.fill.solid()
-        slide.background.fill.fore_color.rgb = bg_color
-
-        # 2. 標題重新設計
-        if slide.shapes.title:
-            title_shape = slide.shapes.title
-            title_shape.text = data["title"]
-            para = title_shape.text_frame.paragraphs[0]
-            para.font.bold = True
-            para.font.color.rgb = title_color
-            para.alignment = alignment
-
-        # 3. 內文重新設計
-        content_shape = slide.placeholders[1]
-        content_shape.text = data["text"]
-        for p in content_shape.text_frame.paragraphs:
-            p.font.size = Pt(18)
-            p.font.color.rgb = text_color
-            p.alignment = alignment
+        # 1. 移植標題
+        if slide.shapes.title and new_slide.shapes.title:
+            new_slide.shapes.title.text = slide.shapes.title.text
+            
+        # 2. 移植主要內容文字
+        source_placeholders = [sp for sp in slide.placeholders if sp != slide.shapes.title]
+        target_placeholders = [tp for tp in new_slide.placeholders if tp != new_slide.shapes.title]
+        
+        if source_placeholders and target_placeholders:
+            # 簡單的一對一移植
+            target_placeholders[0].text = source_placeholders[0].text
 
     output = io.BytesIO()
-    new_prs.save(output)
+    template.save(output)
     output.seek(0)
     return output
 
 # --- UI 介面 ---
-uploaded_file = st.file_uploader("請上傳原始 PPT 檔案 (.pptx)", type=["pptx"])
+col1, col2 = st.columns(2)
 
-if uploaded_file:
-    # 1. 執行提取
-    with st.spinner("正在解析原始投影片內容..."):
-        extracted_data = extract_text_from_ppt(uploaded_file)
-    
-    st.success(f"成功讀取 {len(extracted_data)} 頁投影片！")
+with col1:
+    src_file = st.file_uploader("1. 上傳【原始檔案】(內容來源)", type=["pptx"])
+with col2:
+    tpl_file = st.file_uploader("2. 上傳【空的模板】(風格來源)", type=["pptx"])
 
-    # 2. 提供風格選項
-    col1, col2 = st.columns(2)
+if src_file and tpl_file:
+    if st.button("開始轉換風格"):
+        with st.spinner("正在將內容移植至新模板..."):
+            result_ppt = transfer_style(src_file, tpl_file)
+            
+            st.success("轉換完成！")
+            st.download_button(
+                label="📥 下載轉換後的簡報",
+                data=result_ppt,
+                file_name="styled_presentation.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            )
 
-    with col1:
-        st.subheader("風格 A：專業商務 (Blue)")
-        st.caption("特點：左對齊、商務藍、高對比白背景")
-        ppt_a = redesign_ppt(extracted_data, style="business")
-        st.download_button("下載商務版型", ppt_a, "business_redesign.pptx")
-
-    with col2:
-        st.subheader("風格 B：未來科技 (Cyber)")
-        st.caption("特點：置中對齊、螢光綠標題、深色背景")
-        ppt_b = redesign_ppt(extracted_data, style="cyber")
-        st.download_button("下載科技版型", ppt_b, "cyber_redesign.pptx")
+st.divider()
+st.info("💡 提示：模板檔案建議包含您想要的背景、Logo 與字體設定。本工具會將原始文字填入模板的『標題與內容』框中。")
